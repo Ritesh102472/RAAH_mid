@@ -270,3 +270,26 @@ def get_pothole_detail(pothole_id: int, db: Session = Depends(get_db)):
         "confidence": p.confidence,
         "location_source": p.location_source
     }
+
+@router.post("/mapillary/scan")
+async def trigger_mapillary_scan(
+    latitude: float,
+    longitude: float,
+    radius: int = 50,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user)
+):
+    """
+    Trigger a background Celery task to scan the specified area using Mapillary imagery.
+    """
+    from utils.tasks import scan_mapillary_area
+    user_id = current_user.id if current_user else None
+    
+    # Dispatch the Celery task
+    task = scan_mapillary_area.delay(latitude, longitude, radius, user_id)
+    
+    return {
+        "status": "queued",
+        "message": f"Mapillary scan queued for {latitude}, {longitude} with radius {radius}m.",
+        "task_id": str(task.id)
+    }

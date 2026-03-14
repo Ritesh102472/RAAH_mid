@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Map as MapIcon, Navigation, ShieldAlert, X, MapPin } from 'lucide-react';
+import { Map as MapIcon, Navigation, ShieldAlert, X, MapPin, Globe } from 'lucide-react';
 import api from '../services/api';
 
 // Leaflet CSS is loaded via CDN in index.html (added by vite config)
@@ -10,6 +10,8 @@ export default function MapPage() {
   const [selectedPothole, setSelectedPothole] = useState(null);
   const [potholes, setPotholes] = useState([]);
   const [predictions, setPredictions] = useState([]);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanMessage, setScanMessage] = useState('');
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersLayerRef = useRef(null);
@@ -67,6 +69,31 @@ export default function MapPage() {
       renderMarkers(ptRes.data.potholes || [], predRes.data.features || [], activeTab);
     } catch (err) {
       console.error('Map data fetch error:', err);
+    }
+  }
+
+  async function handleMapillaryScan() {
+    if (!mapInstanceRef.current) return;
+    setIsScanning(true);
+    setScanMessage('Initiating scan...');
+    try {
+      const center = mapInstanceRef.current.getCenter();
+      // Call the new backend endpoint
+      const res = await api.post('/citizen/mapillary/scan', null, {
+        params: {
+          latitude: center.lat,
+          longitude: center.lng,
+          radius: 50 // Default scan radius
+        }
+      });
+      setScanMessage(res.data.message || 'Scan queued successfully!');
+      setTimeout(() => setScanMessage(''), 4000);
+    } catch (err) {
+      console.error('Mapillary scan error:', err);
+      setScanMessage('Failed to queue scan. Ensure your token is set.');
+      setTimeout(() => setScanMessage(''), 4000);
+    } finally {
+      setIsScanning(false);
     }
   }
 
@@ -178,10 +205,43 @@ export default function MapPage() {
         </div>
       </div>
 
-      {/* Map Container */}
-      <div className="flex-1 hackathon-glass rounded-3xl border border-white/5 overflow-hidden relative shadow-[inset_0_0_30px_rgba(0,0,0,0.5)]">
-        {/* Leaflet Map */}
-        <div ref={mapRef} className="absolute inset-0 w-full h-full z-0" style={{ minHeight: '400px' }} />
+      {/* Map Content Section */}
+      <div className="flex-1 relative flex flex-col md:flex-row gap-6">
+        {/* Map Container */}
+        <div className="flex-1 hackathon-glass rounded-3xl border border-white/5 overflow-hidden relative shadow-[inset_0_0_30px_rgba(0,0,0,0.5)]">
+          {/* Leaflet Map */}
+          <div ref={mapRef} className="absolute inset-0 w-full h-full z-0" style={{ minHeight: '400px' }} />
+
+          {/* Mapillary Scan Button */}
+          <div className="absolute top-6 left-16 z-10 hidden md:block">
+            <button 
+              onClick={handleMapillaryScan}
+              disabled={isScanning}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl backdrop-blur-md border shadow-lg transition-all font-black tracking-widest text-xs uppercase ${
+                isScanning 
+                  ? 'bg-emerald-900/60 text-emerald-400 border-emerald-500/50 cursor-not-allowed' 
+                  : 'bg-black/80 text-white border-white/20 hover:bg-white/10 hover:border-cyan-400 hover:text-cyan-400 hover:shadow-[0_0_20px_rgba(34,211,238,0.3)]'
+              }`}
+            >
+              {isScanning ? (
+                <>
+                  <div className="w-3 h-3 rounded-full border-2 border-t-emerald-400 border-r-transparent border-b-emerald-400 border-l-transparent animate-spin" />
+                  Scanning...
+                </>
+              ) : (
+                <>
+                  <Globe size={16} /> Scan Area (Mapillary)
+                </>
+              )}
+            </button>
+            
+            {/* Scan Toast */}
+            {scanMessage && (
+              <div className="mt-3 px-4 py-2 bg-black/90 text-[10px] font-black tracking-widest uppercase text-cyan-400 border border-cyan-500/30 rounded-lg shadow-xl animate-in fade-in slide-in-from-top-4">
+                {scanMessage}
+              </div>
+            )}
+          </div>
 
         {/* Layer Legend Overlay */}
         <div className="absolute top-6 right-6 bg-black/60 backdrop-blur-xl p-5 rounded-2xl border border-white/10 shadow-[0_10px_30px_rgba(0,0,0,0.5)] space-y-4 z-10 w-56">
@@ -221,6 +281,7 @@ export default function MapPage() {
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );
