@@ -22,7 +22,7 @@ _model_path: str = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "pothole_best_backup.pt"
 )
-CONFIDENCE_THRESHOLD = 0.25   # Balanced for good detection vs noise
+CONFIDENCE_THRESHOLD = 0.35   # Reduced noise as requested
 DEDUP_DISTANCE_PX    = 35     # Distance for merging close detections
 FRAME_SAMPLE_RATE    = 3
 
@@ -33,15 +33,25 @@ def _load_model():
     if _model is not None:
         return _model
 
-    try:
-        from ultralytics import YOLO
-        print(f"[AI] Loading YOLO model from: {_model_path}")
-        _model = YOLO(_model_path)
-        print("[AI] ✅ Model loaded successfully")
-        return _model
-    except Exception as e:
-        print(f"[AI] ❌ Failed to load model: {e}")
-        return None
+    # Try both names
+    paths = [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "pothole_best.pt"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "pothole_best_backup.pt")
+    ]
+    
+    for p in paths:
+        if os.path.exists(p):
+            try:
+                from ultralytics import YOLO
+                print(f"[AI] 🚀 Loading YOLO model from: {p}")
+                _model = YOLO(p)
+                print(f"[AI] ✅ Model loaded successfully from {p}")
+                return _model
+            except Exception as e:
+                print(f"[AI] ❌ Failed to load model {p}: {e}")
+    
+    print("[AI] 🛑 CRITICAL: No valid model found! AI will be disabled.")
+    return None
 
 
 def _simple_severity(w: float, h: float, confidence: float) -> str:
@@ -67,12 +77,14 @@ def _run_yolo_on_bytes(file_bytes: bytes) -> Dict[str, Any]:
     from PIL import Image, ImageOps
     model = _load_model()
     if model is None:
-        return _stub_detection()
+        print("[AI] ⚠️ Model missing: Providing error response (no stub).")
+        return {"potholes": [], "error": "Model not loaded"}
 
     try:
         img = Image.open(io.BytesIO(file_bytes))
         img = ImageOps.exif_transpose(img).convert("RGB")
-        results = model(img, verbose=False)
+        print(f"[AI] Running inference on image size: {img.size}")
+        results = model(img, verbose=True) # Turn on verbose for logs
 
         potholes = []
         for result in results:
@@ -81,10 +93,22 @@ def _run_yolo_on_bytes(file_bytes: bytes) -> Dict[str, Any]:
             for box in result.boxes:
                 xyxy = box.xyxy[0].tolist()   # [x1, y1, x2, y2]
                 conf = float(box.conf[0])
+                
+                # Filter by threshold here manually just in case model params are ignored
+                if conf < CONFIDENCE_THRESHOLD:
+                    continue
+
                 # Convert xyxy → xywh
                 x1, y1, x2, y2 = xyxy
                 w = x2 - x1
                 h = y2 - y1
+                
+                # SKY GATE: Potholes cannot be in the top 35% of a dashcam/phone image
+                # This mathematically eliminates clouds/trees being marked as potholes.
+                if y1 < (img.height * 0.35):
+                    print(f"[AI] 🛡️ Sky Gate: Blocked impossible pothole at y={y1} (Top 35% of {img.height}px)")
+                    continue
+
                 bbox = [x1, y1, w, h]
                 severity = classify_severity_from_detection(bbox, conf)
                 potholes.append({
@@ -93,27 +117,18 @@ def _run_yolo_on_bytes(file_bytes: bytes) -> Dict[str, Any]:
                     "severity": severity,
                 })
 
+        print(f"[AI] Found {len(potholes)} potholes above {CONFIDENCE_THRESHOLD}")
         return {"potholes": potholes}
 
     except Exception as e:
-        print(f"[AI] Inference error: {e} — falling back to stub")
-        return _stub_detection()
+        import traceback
+        err_msg = f"[AI] Inference error: {str(e)}"
+        print(err_msg)
+        print(traceback.format_exc())
+        return {"potholes": [], "error": err_msg}
 
 
-def _stub_detection() -> Dict[str, Any]:
-    """Stub for when model is unavailable. Returns realistic fake result."""
-    import random
-    confidence = round(random.uniform(0.72, 0.97), 2)
-    w = random.randint(40, 120)
-    h = random.randint(30, 100)
-    x = random.randint(10, 300)
-    y = random.randint(10, 200)
-    bbox = [float(x), float(y), float(w), float(h)]
-    severity = classify_severity_from_detection(bbox, confidence)
-    num_potholes = random.choices([0, 1, 2], weights=[15, 70, 15])[0]
-    potholes = [{"bbox": bbox, "confidence": confidence, "severity": severity}
-                for _ in range(num_potholes)]
-    return {"potholes": potholes}
+# Stub detection removed to prevent fake sky potholes.
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +215,6 @@ def _process_video(file_bytes: bytes, ext: str) -> tuple:
         if os.path.exists(tmp_path): os.unlink(tmp_path)
 
 async def run_detection(file_bytes: bytes, filename: str) -> Dict[str, Any]:
-    if not settings.AI_MODEL_ENABLED: return _stub_detection()
     ext = (filename or "").lower().split(".")[-1]
     if ext in ("mp4", "mov", "avi", "mkv", "webm"):
         annotated, potholes = _process_video(file_bytes, ext)

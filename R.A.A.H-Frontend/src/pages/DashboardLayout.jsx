@@ -144,7 +144,6 @@ export default function DashboardLayout() {
             {isAdmin && <span className="text-[10px] font-black text-red-400 tracking-[0.4em] uppercase mt-1 pl-6">Admin Command Center</span>}
           </div>
 
-          {/* Return Home — light glass style to match the warm dashboard theme */}
           <Link to="/">
             <button className="flex items-center gap-2 bg-white/50 backdrop-blur-md hover:bg-white/70 text-gray-800 font-black px-5 py-2.5 rounded-xl transition-all duration-300 border border-orange-300/60 hover:border-orange-400 hover:shadow-[0_0_15px_rgba(251,146,60,0.3)] hover:scale-[1.03]">
               <Home size={17} className="text-orange-500" />

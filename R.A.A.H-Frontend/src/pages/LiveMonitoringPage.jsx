@@ -144,7 +144,7 @@ export default function LiveMonitoringPage() {
         {activeTab === 'live' && (
           <div className="h-full flex flex-col md:flex-row gap-8">
             <div
-              className="flex-1 bg-black/60 rounded-2xl border border-cyan-500/30 relative overflow-hidden flex flex-col items-center justify-center group shadow-[inset_0_0_50px_rgba(0,0,0,0.8)] cursor-pointer hover:border-cyan-400/60 transition-all"
+              className={`flex-1 bg-black/60 rounded-2xl border border-cyan-500/30 relative overflow-hidden flex flex-col items-center ${uploadResult ? 'justify-start pt-8' : 'justify-center'} group shadow-[inset_0_0_50px_rgba(0,0,0,0.8)] cursor-pointer hover:border-cyan-400/60 transition-all`}
               onClick={() => !uploading && fileInputRef.current?.click()}
             >
               <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
@@ -157,94 +157,91 @@ export default function LiveMonitoringPage() {
                   <p className="text-cyan-400 font-mono text-sm tracking-widest font-bold animate-pulse">PROCESSING...</p>
                 </div>
               ) : uploadResult ? (
-                <div className="flex flex-col items-center gap-6 z-10 w-full h-full p-4 overflow-hidden">
-                  <div className="relative flex-1 min-h-0 border-2 border-cyan-500/20 rounded-xl overflow-hidden bg-black/40 group/img shadow-[0_0_30px_rgba(0,0,0,0.5)] flex items-center justify-center">
-                    {uploadResult.is_video ? (
-                      <video
-                        src={`${API_BASE}${uploadResult.file_url}`}
-                        controls
-                        className="max-h-full max-w-full object-contain"
-                        onLoadedMetadata={(e) => {
-                          setImageSize({
-                            width: e.target.videoWidth,
-                            height: e.target.videoHeight
-                          });
-                        }}
-                        onTimeUpdate={(e) => setVideoCurrentTime(e.target.currentTime)}
-                      />
-                    ) : (
-                      <img
-                        ref={imageRef}
-                        src={`${API_BASE}${uploadResult.file_url}`}
-                        alt="Pothole detection"
-                        className="h-full w-full object-contain"
-                        onLoad={(e) => {
-                          setImageSize({
-                            width: e.target.naturalWidth,
-                            height: e.target.naturalHeight
-                          });
-                        }}
-                      />
-                    )}
+                <div className="flex flex-col items-center justify-start gap-8 z-10 w-full h-full p-4 pb-20 overflow-y-auto custom-scrollbar">
+                    {/* Tight wrapper that matches the physical image area */}
+                    <div className="relative inline-block max-w-full flex-shrink-0">
+                      {uploadResult.is_video ? (
+                        <video
+                          src={`${API_BASE}${uploadResult.file_url}`}
+                          controls
+                          className="max-h-[60vh] w-auto object-contain rounded-xl shadow-2xl border border-white/10"
+                          onLoadedMetadata={(e) => {
+                            setImageSize({
+                              width: e.target.videoWidth,
+                              height: e.target.videoHeight
+                            });
+                          }}
+                          onTimeUpdate={(e) => setVideoCurrentTime(e.target.currentTime)}
+                        />
+                      ) : (
+                        <img
+                          ref={imageRef}
+                          src={`${API_BASE}${uploadResult.file_url}`}
+                          alt="Pothole detection"
+                          className="max-h-[60vh] w-auto object-contain rounded-xl shadow-2xl border border-white/10"
+                          onLoad={(e) => {
+                            setImageSize({
+                              width: e.target.naturalWidth,
+                              height: e.target.naturalHeight
+                            });
+                          }}
+                        />
+                      )}
 
-                    {/* SVG Overlay for Bounding Boxes — images only (video has boxes burned in) */}
-                    {!uploadResult.is_video && imageSize.width > 0 && (
-                      <svg
-                        className="absolute inset-0 w-full h-full pointer-events-none"
-                        viewBox={`0 0 ${imageSize.width} ${imageSize.height}`}
-                        preserveAspectRatio="xMidYMid meet"
-                      >
-                        {uploadResult.potholes?.map((p, i) => {
-                          const [x, y, w, h] = p.bbox || [0, 0, 0, 0];
-                          const labelText = `Pothole ${p.confidence.toFixed(2)}`;
-                          const fontSize = Math.max(10, imageSize.width / 60);
-                          const paddingX = 4;
-                          const paddingY = 2;
-                          const labelWidth = labelText.length * (fontSize * 0.6) + (paddingX * 2);
-                          const labelHeight = fontSize + (paddingY * 2);
+                      {/* SVG Overlay — Now pinned precisely to the image boundaries */}
+                      {!uploadResult.is_video && imageSize.width > 0 && (
+                        <svg
+                          className="absolute top-0 left-0 w-full h-full pointer-events-none"
+                          viewBox={`0 0 ${imageSize.width} ${imageSize.height}`}
+                          preserveAspectRatio="none"
+                        >
+                          {uploadResult.potholes?.map((p, i) => {
+                            const [x, y, w, h] = p.bbox || [0, 0, 0, 0];
+                            const labelText = `Pothole ${p.confidence.toFixed(2)}`;
+                            const fontSize = Math.max(10, imageSize.width / 50);
+                            const paddingX = 6;
+                            const paddingY = 4;
+                            const labelWidth = labelText.length * (fontSize * 0.6) + (paddingX * 2);
+                            const labelHeight = fontSize + (paddingY * 2);
 
-                          return (
-                            <g key={i}>
-                              {/* Thin Bounding Box */}
-                              <rect
-                                x={x}
-                                y={y}
-                                width={w}
-                                height={h}
-                                fill="none"
-                                stroke="#3b82f6"
-                                strokeWidth={Math.max(2, imageSize.width / 500)}
-                              />
+                            return (
+                              <g key={i}>
+                                <rect
+                                  x={x}
+                                  y={y}
+                                  width={w}
+                                  height={h}
+                                  fill="none"
+                                  stroke="#3b82f6"
+                                  strokeWidth={Math.max(2, imageSize.width / 400)}
+                                  className="drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]"
+                                />
+                                <rect
+                                  x={x}
+                                  y={y - labelHeight}
+                                  width={labelWidth}
+                                  height={labelHeight}
+                                  fill="#3b82f6"
+                                />
+                                <text
+                                  x={x + paddingX}
+                                  y={y - paddingY/2}
+                                  fill="white"
+                                  fontSize={fontSize}
+                                  fontWeight="black"
+                                  fontFamily="Inter, sans-serif"
+                                  dominantBaseline="text-after-edge"
+                                >
+                                  {labelText}
+                                </text>
+                              </g>
+                            );
+                          })}
+                        </svg>
+                      )}
+                    </div>
 
-                              {/* Solid Label Background (Badge) */}
-                              <rect
-                                x={x}
-                                y={y - labelHeight}
-                                width={labelWidth}
-                                height={labelHeight}
-                                fill="#3b82f6"
-                              />
-
-                              {/* Label Text inside Badge */}
-                              <text
-                                x={x + paddingX}
-                                y={y - paddingY}
-                                fill="white"
-                                fontSize={fontSize}
-                                fontWeight="bold"
-                                fontFamily="Arial, sans-serif"
-                                dominantBaseline="text-after-edge"
-                              >
-                                {labelText}
-                              </text>
-                            </g>
-                          );
-                        })}
-                      </svg>
-                    )}
-                  </div>
-
-                  <div className="flex flex-col items-center gap-4 bg-black/40 p-4 rounded-2xl border border-white/5 backdrop-blur-sm">
+                  <div className="flex flex-col items-center gap-4 bg-black/40 p-4 rounded-2xl border border-white/5 backdrop-blur-sm mb-4 flex-shrink-0">
                     <p className="text-emerald-400 font-black uppercase tracking-[0.2em] flex items-center gap-3 text-sm">
                       <CheckCircle size={20} /> Detection Complete
                     </p>
